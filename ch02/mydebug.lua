@@ -51,8 +51,7 @@ local function _getvarvalue (name, level, isenv)
     local found = false
 
     -- + 1 to correct the level to include _getvarvalue itself,
-    -- default by 5: getvarvalue, debug mainchunk, debug.debug, hook and foo
-    level = (level or 5) + 1
+    level = (level or 1) + 1
     -- try local vars
     for i = 1, math.huge do
         local n, v = debug.getlocal(level, i)
@@ -86,6 +85,9 @@ end
 
 -- wrap _getvarvalue, to print value
 local function getvarvalue (name, level)
+    -- default by 1
+    -- plus 4 to include getvarvalue, debug mainchunk, debug.debug, hook
+    level = (level or 1) + 4
     local where, value = _getvarvalue(name, level)
     if value then
         print(where, value)

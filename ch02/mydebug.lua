@@ -24,6 +24,9 @@ end
 
 -- set breakpoint
 local function setbreakpoint(func, line)
+    if type(func) ~= "function" or type(line) ~= "number" then
+        return 0
+    end
     status.bpid = status.bpid + 1
     status.bpnum = status.bpnum + 1
     status.bptable[status.bpid] = {func = func, line = line}
@@ -36,6 +39,9 @@ end
 
 -- remove breakpoint
 local function removebreakpoint(id)
+    if status.bptable[id] == nil then
+        return
+    end
     status.bptable[id] = nil
     status.bpnum = status.bpnum - 1
     if status.bpnum == 0 then

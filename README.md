@@ -37,7 +37,7 @@ local ldb = require "luadebug"
 
 **syntax:** id = luadebug.setbreakpoint(func, line)
 
-Set a breakpoint within function `func`, right at the `line` line of source file.
+Sets a breakpoint within function `func`, right at the `line` line of source file.
 
 `func` is a function, and `line` is a number which means the line number for setting breakpoint.
 
@@ -49,13 +49,13 @@ The breakpoint `id` can be later used to remove the breakpoint.
 
 **syntax:** luadebug.removebreakpoint(id)
 
-Remove the breakpoint set before. If `id` is not a valid breakpoint id, it does nothing.
+Removes the breakpoint set before. If `id` is not a valid breakpoint id, it does nothing.
 
 ## getvarvalue
 
 **syntax:** luadebug.getvarvalue(name, level)
 
-Print the value of a variable called `name`. And `level` specifies the stack level of the active function
+Prints the value of a variable called `name`. And `level` specifies the stack level of the active function
 
 from which the variable is searched.
 

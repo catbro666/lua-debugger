@@ -1,7 +1,7 @@
-local mydebug = require "mydebug"
-local setbp = mydebug.setbreakpoint
-local rmbp = mydebug.removebreakpoint
-getv = mydebug.getvarvalue
+local ldb = require "luadebug"
+local setbp = ldb.setbreakpoint
+local rmbp = ldb.removebreakpoint
+getv = ldb.getvarvalue
 
 g = 1
 

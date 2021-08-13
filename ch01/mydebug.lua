@@ -25,7 +25,7 @@ end
 -- set breakpoint
 local function setbreakpoint(func, line)
     if type(func) ~= "function" or type(line) ~= "number" then
-        return 0
+        return nil
     end
     status.bpid = status.bpid + 1
     status.bpnum = status.bpnum + 1

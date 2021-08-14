@@ -1,7 +1,7 @@
 local ldb = require "luadebug"
 local setbp = ldb.setbreakpoint
 local rmbp = ldb.removebreakpoint
-getv = ldb.getvarvalue
+pv = ldb.printvarvalue
 
 g = 1
 

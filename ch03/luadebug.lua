@@ -22,6 +22,7 @@ local function linehook (event, line)
     end
 end
 
+
 -- set breakpoint
 local function setbreakpoint(func, line)
     if type(func) ~= "function" or type(line) ~= "number" then
@@ -50,7 +51,7 @@ local function removebreakpoint(id)
 end
 
 
--- get variable from local, upvalue or _ENV
+-- get variable value from local, upvalue or _ENV
 -- modified from "Programming in Lua Fourth edition"
 local function _getvarvalue (name, level, isenv)
     local value
@@ -89,9 +90,10 @@ local function _getvarvalue (name, level, isenv)
     end
 end
 
+
 -- wrap _getvarvalue, to print value
 local function printvarvalue (name, level)
-    -- default by 1
+    -- 1 by default
     -- plus 4 to include printvarvalue, debug mainchunk, debug.debug, hook
     level = (level or 1) + 4
     local where, value = _getvarvalue(name, level)
@@ -102,8 +104,76 @@ local function printvarvalue (name, level)
     end
 end
 
+
+-- set variable value to local, upvalue or _ENV
+local function _setvarvalue (name, value, level)
+    local index
+
+    -- + 1 to correct the level to include _setvarvalue itself,
+    level = (level or 1) + 1
+    -- try local vars
+    for i = 1, math.huge do
+        local n, v = debug.getlocal(level, i)
+        if not n then break end
+        if n == name then
+            index = i
+            -- we didn't break here in order to get the local var with max index
+        end
+    end
+    if index then
+        debug.setlocal(level, index, value)
+        return "local"
+    end
+
+    -- try upvalues
+    local func = debug.getinfo(level, "f").func
+    for i = 1, math.huge do
+        local n, v = debug.getupvalue(func, i)
+        if not n then break end
+        if n == name then
+            debug.setupvalue(func, i, value)
+            return "upvalue"
+        end
+    end
+
+    -- try to get from _ENV
+    local _, env = _getvarvalue("_ENV", level, true)
+    if env and env[name] then
+        env[name] = value
+        return "global"
+    else
+        return nil
+    end
+end
+
+
+-- wrap _setvarvalue, to print value
+local function setvarvalue (name, value, level)
+    -- 1 by default
+    -- plus 4 to include setvarvalue, debug mainchunk, debug.debug, hook
+    level = (level or 1) + 4
+    local where = _setvarvalue(name, value, level)
+    if where then
+        print(where, name)
+    else
+        print(name, "not found")
+    end
+end
+
+
+-- print a traceback of call stack
+local function printtraceback(level)
+    -- 1 by default
+    -- plus 4 to include printtraceback, debug mainchunk, debug.debug, hook
+    level = (level or 1) + 4
+    print(debug.traceback(nil, level))
+end
+
+
 return {
     setbreakpoint = setbreakpoint,
     removebreakpoint = removebreakpoint,
     printvarvalue = printvarvalue,
+    printtraceback = printtraceback,
+    setvarvalue = setvarvalue,
 }

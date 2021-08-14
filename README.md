@@ -13,12 +13,15 @@ luadebug - 一个简单的Lua调试器，支持断点调试
     - [setbreakpoint](#setbreakpoint)
     - [removebreakpoint](#removebreakpoint)
     - [printvarvalue](#printvarvalue)
+    - [setvarvalue](#setvarvalue)
+    - [printtraceback](#printtraceback)
 
 
 # Branchs
 
 - ch01: minimal implementation of breakpoints 断点的最小实现
 - ch02: general variable print function 通用变量打印函数
+- ch03: general variable set function & traceback of call stack print function 通用变量修改函数及调用栈回溯打印函数
 
 # Desciption
 
@@ -33,6 +36,7 @@ local ldb = require "luadebug"
 ```
 
 # Methods
+
 ## setbreakpoint
 
 **syntax:** id = luadebug.setbreakpoint(func, line)
@@ -45,17 +49,57 @@ Returns the breakpoint id when success, otherwise returns `nil`.
 
 The breakpoint `id` can be later used to remove the breakpoint.
 
+[Back to TOC](#Table of Contents)
+
+
 ## removebreakpoint
 
 **syntax:** luadebug.removebreakpoint(id)
 
 Removes the breakpoint set before. If `id` is not a valid breakpoint id, it does nothing.
 
+[Back to TOC](#Table of Contents)
+
+
 ## printvarvalue
 
 **syntax:** luadebug.printvarvalue(name, level)
 
-Prints the value of a variable called `name`. And `level` specifies the stack level of the active function
+Prints the value of a variable called `name`. The variable can be either a local variable, an upvalue,
 
-from which the variable is searched.
+or a variable in `_ENV` table. And `level` specifies the stack level of the active function
 
+from which the variable is searched; `1` (the default) means the function where the breakpoint is set.
+
+If the variable is found, then it prints the where the variable is found (local | upvalue | global),
+
+and the value of variable. If not found, it then prompts the variable is not found.
+
+[Back to TOC](#Table of Contents)
+
+
+## setvarvalue
+
+**syntax:** luadebug.setvarvalue(name, value, level)
+
+Sets the value of a variable called `name` to `value`. The variable can be either a local variable, an upvalue,
+
+or a variable in `_ENV` table. And `level` specifies the stack level of the active function
+
+from which the variable is searched; `1` (the default) means the function where the breakpoint is set.
+
+If the variable is found, then modifies the value to `value` and prints the where the variable is found (local | upvalue | global).
+
+If not found, it then prompts the variable is not found.
+
+
+[Back to TOC](#Table of Contents)
+
+
+## printtraceback
+
+**syntax:** luadebug.printvarvalue(level)
+
+Prints a traceback of call stack. The parameter `level` (1 by default) tells at which level to start the traceback.
+
+[Back to TOC](#Table of Contents)

@@ -49,7 +49,7 @@ Returns the breakpoint id when success, otherwise returns `nil`.
 
 The breakpoint `id` can be later used to remove the breakpoint.
 
-[Back to TOC](#Table of Contents)
+[Back to TOC](#table-of-contents)
 
 
 ## removebreakpoint
@@ -58,7 +58,7 @@ The breakpoint `id` can be later used to remove the breakpoint.
 
 Removes the breakpoint set before. If `id` is not a valid breakpoint id, it does nothing.
 
-[Back to TOC](#Table of Contents)
+[Back to TOC](#table-of-contents)
 
 
 ## printvarvalue
@@ -75,7 +75,7 @@ If the variable is found, then it prints the where the variable is found (local 
 
 and the value of variable. If not found, it then prompts the variable is not found.
 
-[Back to TOC](#Table of Contents)
+[Back to TOC](#table-of-contents)
 
 
 ## setvarvalue
@@ -92,8 +92,7 @@ If the variable is found, then modifies the value to `value` and prints the wher
 
 If not found, it then prompts the variable is not found.
 
-
-[Back to TOC](#Table of Contents)
+[Back to TOC](#table-of-contents)
 
 
 ## printtraceback
@@ -102,4 +101,4 @@ If not found, it then prompts the variable is not found.
 
 Prints a traceback of call stack. The parameter `level` (1 by default) tells at which level to start the traceback.
 
-[Back to TOC](#Table of Contents)
+[Back to TOC](#table-of-contents)

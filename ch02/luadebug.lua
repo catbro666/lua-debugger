@@ -90,9 +90,9 @@ local function _getvarvalue (name, level, isenv)
 end
 
 -- wrap _getvarvalue, to print value
-local function getvarvalue (name, level)
+local function printvarvalue (name, level)
     -- default by 1
-    -- plus 4 to include getvarvalue, debug mainchunk, debug.debug, hook
+    -- plus 4 to include printvarvalue, debug mainchunk, debug.debug, hook
     level = (level or 1) + 4
     local where, value = _getvarvalue(name, level)
     if value then
@@ -105,5 +105,5 @@ end
 return {
     setbreakpoint = setbreakpoint,
     removebreakpoint = removebreakpoint,
-    getvarvalue = getvarvalue,
+    printvarvalue = printvarvalue,
 }

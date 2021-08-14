@@ -11,8 +11,9 @@ status.bptable = {}     -- table to save breakpoint infos
 
 -- hook
 local function linehook (event, line)
+    local s = status
     local info = debug.getinfo(2, "nfS")
-    for _, v in pairs(status.bptable) do
+    for _, v in pairs(s.bptable) do
         if v.func == info.func and v.line == line then
             local prompt = string.format("(%s)%s %s:%d\n", 
                 info.namewhat, info.name, info.short_src, line)
@@ -25,27 +26,29 @@ end
 
 -- set breakpoint
 local function setbreakpoint(func, line)
+    local s = status
     if type(func) ~= "function" or type(line) ~= "number" then
         return nil
     end
-    status.bpid = status.bpid + 1
-    status.bpnum = status.bpnum + 1
-    status.bptable[status.bpid] = {func = func, line = line}
-    if status.bpnum == 1 then           -- first breakpoint
+    s.bpid = s.bpid + 1
+    s.bpnum = s.bpnum + 1
+    s.bptable[s.bpid] = {func = func, line = line}
+    if s.bpnum == 1 then                -- first breakpoint
         debug.sethook(linehook, "l")	-- set hook
     end
-    return status.bpid                  --> return breakpoint id
+    return s.bpid                       --> return breakpoint id
 end
 
 
 -- remove breakpoint
 local function removebreakpoint(id)
-    if status.bptable[id] == nil then
+    local s = status
+    if s.bptable[id] == nil then
         return
     end
-    status.bptable[id] = nil
-    status.bpnum = status.bpnum - 1
-    if status.bpnum == 0 then
+    s.bptable[id] = nil
+    s.bpnum = s.bpnum - 1
+    if s.bpnum == 0 then
         debug.sethook()                 -- remove hook
     end
 end

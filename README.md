@@ -12,7 +12,7 @@ luadebug - 一个简单的Lua调试器，支持断点调试
 - [Methods](#Methods)
     - [setbreakpoint](#setbreakpoint)
     - [removebreakpoint](#removebreakpoint)
-    - [getvarvalue](#getvarvalue)
+    - [printvarvalue](#printvarvalue)
 
 
 # Branchs
@@ -51,9 +51,9 @@ The breakpoint `id` can be later used to remove the breakpoint.
 
 Removes the breakpoint set before. If `id` is not a valid breakpoint id, it does nothing.
 
-## getvarvalue
+## printvarvalue
 
-**syntax:** luadebug.getvarvalue(name, level)
+**syntax:** luadebug.printvarvalue(name, level)
 
 Prints the value of a variable called `name`. And `level` specifies the stack level of the active function
 

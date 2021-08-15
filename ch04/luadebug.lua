@@ -6,18 +6,56 @@ local debug = require "debug"
 local status = {}
 status.bpnum = 0        -- current breakpoint number
 status.bpid = 0         -- current breakpoint id
-status.bptable = {}     -- table to save breakpoint infos
-
+status.bptable = {}     -- table for saving breakpoint infos
+status.stackinfos = {}  -- table for saving stack infos
+status.stackdepth = 0   -- the depth of stack
+status.funcinfos = {}   -- table for caching func infos
 
 -- hook
-local function linehook (event, line)
-    local info = debug.getinfo(2, "nfS")
-    for _, v in pairs(status.bptable) do
-        if v.func == info.func and v.line == line then
-            local prompt = string.format("(%s)%s %s:%d\n", 
-                info.namewhat, info.name, info.short_src, line)
-            io.write(prompt)
-            debug.debug()
+local function hook (event, line)
+    local s = status
+    if event == "call" or event == "tail call" then
+        local func = debug.getinfo(2, "f").func
+        for _, v in pairs(s.bptable) do
+            -- found breakpoint in current function
+            if v.func == func then
+                if event == "call" then
+                    s.stackdepth = s.stackdepth + 1
+                end
+                s.stackinfos[s.stackdepth] =
+                    {func = func, hasbreak = true}
+                debug.sethook(hook, "crl")	-- add "line" event
+                return
+            end
+        end
+        -- no breakpoints found
+        if event == "call" then
+            s.stackdepth = s.stackdepth + 1
+        end
+        s.stackinfos[s.stackdepth] = {func = func, hasbreak = false}
+        debug.sethook(hook, "cr")   -- remove "line" event temporarily
+    elseif event == "return" or event == "tail return" then
+        s.stackinfos[s.stackdepth] = nil
+        s.stackdepth = s.stackdepth - 1
+        -- if the previous function has breakpoints
+        if s.stackdepth > 0 and s.stackinfos[s.stackdepth].hasbreak then
+            debug.sethook(hook, "crl")  -- restore "line" event
+        else
+            debug.sethook(hook, "cr")   -- remove "line" event
+        end
+    elseif event == "line" then
+        for _, v in pairs(s.bptable) do
+            if v.func == s.stackinfos[s.stackdepth].func
+                and v.line == line then
+                if not s.funcinfos[v.func] then
+                    s.funcinfos[v.func] = debug.getinfo(2, "nS")
+                end
+                local info = s.funcinfos[v.func]
+                local prompt = string.format("%s (%s)%s %s:%d\n",
+                    info.what, info.namewhat, info.name, info.short_src, line)
+                io.write(prompt)
+                debug.debug()
+            end
         end
     end
 end
@@ -25,27 +63,29 @@ end
 
 -- set breakpoint
 local function setbreakpoint(func, line)
+    local s = status
     if type(func) ~= "function" or type(line) ~= "number" then
         return nil
     end
-    status.bpid = status.bpid + 1
-    status.bpnum = status.bpnum + 1
-    status.bptable[status.bpid] = {func = func, line = line}
-    if status.bpnum == 1 then           -- first breakpoint
-        debug.sethook(linehook, "l")	-- set hook
+    s.bpid = s.bpid + 1
+    s.bpnum = s.bpnum + 1
+    s.bptable[s.bpid] = {func = func, line = line}
+    if s.bpnum == 1 then                -- first breakpoint
+        debug.sethook(hook, "c")        -- set hook for "call" event
     end
-    return status.bpid                  --> return breakpoint id
+    return s.bpid                       --> return breakpoint id
 end
 
 
 -- remove breakpoint
 local function removebreakpoint(id)
-    if status.bptable[id] == nil then
+    local s = status
+    if s.bptable[id] == nil then
         return
     end
-    status.bptable[id] = nil
-    status.bpnum = status.bpnum - 1
-    if status.bpnum == 0 then
+    s.bptable[id] = nil
+    s.bpnum = s.bpnum - 1
+    if s.bpnum == 0 then
         debug.sethook()                 -- remove hook
     end
 end

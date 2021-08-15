@@ -5,18 +5,27 @@ pv = ldb.printvarvalue
 sv = ldb.setvarvalue
 ptb = ldb.printtraceback
 
-g = 1
-
-local u = 2
-local function foo (n)
-    local a = 3
-    u = u
-    g = g
+local function f3()
 end
 
-local id1 = setbp(foo, 14)
+local function f2()
+    f3()
+end
 
-foo(10)
+local function f1()
+    f2()
+end
+
+-- add break in f3
+local id1 = setbp(f3, 9)
+-- didn't add break in f2
+
+-- add breaks in f1 before and after calling f2
+local id2 = setbp(f1, 16)
+local id3 = setbp(f1, 17)
+
+f1()
 
 rmbp(id1)
-
+rmbp(id2)
+rmbp(id3)

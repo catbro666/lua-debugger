@@ -23,6 +23,7 @@ luadebug - 一个简单的Lua调试器，支持断点调试
 - ch02: general variable print function 通用变量打印函数
 - ch03: general variable set function & traceback of call stack print function 通用变量修改函数及调用栈回溯打印函数
 - ch04: optimize: hook event processing 优化: 钩子事件处理
+- ch05: optimize: data structures of breakpoint info 优化: 断点信息数据结构
 
 # Desciption
 

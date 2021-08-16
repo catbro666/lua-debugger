@@ -2,38 +2,32 @@
 
 local debug = require "debug"
 
--- record breakpoint status
+-- record breakpoint associated status
 local status = {}
 status.bpnum = 0        -- current breakpoint number
 status.bpid = 0         -- current breakpoint id
-status.bptable = {}     -- table for saving breakpoint infos
+status.bptable = {}     -- breakpoint infos table indexed by id
 status.stackinfos = {}  -- table for saving stack infos
 status.stackdepth = 0   -- the depth of stack
 status.funcinfos = {}   -- table for caching func infos
+status.funcbpt = {}     -- breakpoint infos table indexed by func
 
 -- hook
 local function hook (event, line)
     local s = status
     if event == "call" or event == "tail call" then
         local func = debug.getinfo(2, "f").func
-        for _, v in pairs(s.bptable) do
-            -- found breakpoint in current function
-            if v.func == func then
-                if event == "call" then
-                    s.stackdepth = s.stackdepth + 1
-                end
-                s.stackinfos[s.stackdepth] =
-                    {func = func, hasbreak = true}
-                debug.sethook(hook, "crl")	-- add "line" event
-                return
-            end
-        end
-        -- no breakpoints found
-        if event == "call" then
+        if event == "call" then     -- for tail call, just overwrite
             s.stackdepth = s.stackdepth + 1
         end
-        s.stackinfos[s.stackdepth] = {func = func, hasbreak = false}
-        debug.sethook(hook, "cr")   -- remove "line" event temporarily
+        -- found breakpoint in current function
+        if s.funcbpt[func] then
+            s.stackinfos[s.stackdepth] = {func = func, hasbreak = true}
+            debug.sethook(hook, "crl")	-- add "line" event
+        else        -- no breakpoints found
+            s.stackinfos[s.stackdepth] = {func = func, hasbreak = false}
+            debug.sethook(hook, "cr")   -- remove "line" event temporarily
+        end
     elseif event == "return" or event == "tail return" then
         s.stackinfos[s.stackdepth] = nil
         s.stackdepth = s.stackdepth - 1
@@ -44,13 +38,15 @@ local function hook (event, line)
             debug.sethook(hook, "cr")   -- remove "line" event
         end
     elseif event == "line" then
-        for _, v in pairs(s.bptable) do
-            if v.func == s.stackinfos[s.stackdepth].func
-                and v.line == line then
-                if not s.funcinfos[v.func] then
-                    s.funcinfos[v.func] = debug.getinfo(2, "nS")
+        local curfunc = s.stackinfos[s.stackdepth].func
+        local funcbp = s.funcbpt[curfunc]
+        assert(funcbp and funcbp.bps)
+        for bline, _ in pairs(funcbp.bps) do
+            if bline == line then
+                if not s.funcinfos[curfunc] then
+                    s.funcinfos[curfunc] = debug.getinfo(2, "nS")
                 end
-                local info = s.funcinfos[v.func]
+                local info = s.funcinfos[curfunc]
                 local prompt = string.format("%s (%s)%s %s:%d\n",
                     info.what, info.namewhat, info.name, info.short_src, line)
                 io.write(prompt)
@@ -67,9 +63,22 @@ local function setbreakpoint(func, line)
     if type(func) ~= "function" or type(line) ~= "number" then
         return nil
     end
+    -- already set this breakpoint
+    if s.funcbpt[func] and s.funcbpt[func].bps[line] then
+        return s.funcbpt[func].bps[line]
+    end
     s.bpid = s.bpid + 1
     s.bpnum = s.bpnum + 1
     s.bptable[s.bpid] = {func = func, line = line}
+    if s.funcbpt[func] then             -- already has breaks
+        s.funcbpt[func].num = s.funcbpt[func].num + 1
+        s.funcbpt[func].bps[line] = s.bpid
+    else                                -- first breakpoint of this func
+        s.funcbpt[func] = {}
+        s.funcbpt[func].bps = {}
+        s.funcbpt[func].num = 1
+        s.funcbpt[func].bps[line] = s.bpid
+    end
     if s.bpnum == 1 then                -- first breakpoint
         debug.sethook(hook, "c")        -- set hook for "call" event
     end
@@ -82,6 +91,11 @@ local function removebreakpoint(id)
     local s = status
     if s.bptable[id] == nil then
         return
+    end
+    s.funcbpt[s.bptable[id].func].num = s.funcbpt[s.bptable[id].func].num - 1
+    s.funcbpt[s.bptable[id].func].bps[s.bptable[id].line] = nil
+    if s.funcbpt[s.bptable[id].func].num == 0 then
+        s.funcbpt[s.bptable[id].func] = nil
     end
     s.bptable[id] = nil
     s.bpnum = s.bpnum - 1

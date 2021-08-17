@@ -12,6 +12,43 @@ status.stackdepth = 0   -- the depth of stack
 status.funcinfos = {}   -- table for caching func infos
 status.funcbpt = {}     -- breakpoint infos table indexed by func
 
+
+local function getfuncinfo (func, level)
+    local s = status
+    local info = s.funcinfos[func]
+    if not info then
+        s.funcinfos[func] = debug.getinfo(func, "nSL")
+        info = s.funcinfos[func]
+        info.sortedlines = {}
+        for k, _ in pairs(info.activelines) do
+           table.insert(info.sortedlines, k)
+        end
+        table.sort(info.sortedlines)
+    elseif (not info.name) and level then
+         local nameinfo = debug.getinfo(level + 1, "n") -- + 1 to correct level
+         info.name = nameinfo.name
+         info.namewhat = nameinfo.namewhat
+    end
+    return info
+end
+
+
+local function verifyfuncline (info, line)
+    if not line then
+        return info.sortedlines[1]
+    end
+    if line < info.linedefined or line > info.lastlinedefined then
+        return nil
+    end
+    for _, v in ipairs(info.sortedlines) do
+        if v >= line then
+            return v
+        end
+    end
+    assert(false)   -- impossible to reach here
+end
+
+
 -- hook
 local function hook (event, line)
     local s = status
@@ -43,10 +80,7 @@ local function hook (event, line)
         assert(funcbp and funcbp.bps)
         for bline, _ in pairs(funcbp.bps) do
             if bline == line then
-                if not s.funcinfos[curfunc] then
-                    s.funcinfos[curfunc] = debug.getinfo(2, "nS")
-                end
-                local info = s.funcinfos[curfunc]
+                local info = getfuncinfo(curfunc, 2)
                 local prompt = string.format("%s (%s)%s %s:%d\n",
                     info.what, info.namewhat, info.name, info.short_src, line)
                 io.write(prompt)
@@ -60,26 +94,49 @@ end
 -- set breakpoint
 local function setbreakpoint(func, line)
     local s = status
-    if type(func) ~= "function" or type(line) ~= "number" then
+    if type(func) ~= "function" or ( line and type(line) ~= "number") then
+        io.write("invalid parameter\n")
         return nil
     end
-    -- already set this breakpoint
-    if s.funcbpt[func] and s.funcbpt[func].bps[line] then
-        return s.funcbpt[func].bps[line]
+
+    -- get func info
+    local info = getfuncinfo(func)
+    if not info then
+        io.write("unable to get func info\n")
+        return nil
     end
+
+    -- verify the line
+    line = verifyfuncline(info, line)
+    if not line then
+        io.write("invalid line\n")
+        return nil
+    end
+
+    local funcbp = s.funcbpt[func]
+    -- check if the same breakpoint is already set
+    if funcbp then
+       if funcbp.bps[line] then
+           return funcbp.bps[line]
+       end
+    end
+
     s.bpid = s.bpid + 1
     s.bpnum = s.bpnum + 1
     s.bptable[s.bpid] = {func = func, line = line}
-    if s.funcbpt[func] then             -- already has breaks
-        s.funcbpt[func].num = s.funcbpt[func].num + 1
-        s.funcbpt[func].bps[line] = s.bpid
+
+    if funcbp then                      -- already has breaks of this func
+        funcbp.num = funcbp.num + 1
+        funcbp.bps[line] = s.bpid
     else                                -- first breakpoint of this func
         s.funcbpt[func] = {}
-        s.funcbpt[func].bps = {}
-        s.funcbpt[func].num = 1
-        s.funcbpt[func].bps[line] = s.bpid
+        funcbp = s.funcbpt[func]
+        funcbp.bps = {}
+        funcbp.num = 1
+        funcbp.bps[line] = s.bpid
     end
-    if s.bpnum == 1 then                -- first breakpoint
+
+    if s.bpnum == 1 then                -- first global breakpoint
         debug.sethook(hook, "c")        -- set hook for "call" event
     end
     return s.bpid                       --> return breakpoint id
@@ -92,11 +149,17 @@ local function removebreakpoint(id)
     if s.bptable[id] == nil then
         return
     end
-    s.funcbpt[s.bptable[id].func].num = s.funcbpt[s.bptable[id].func].num - 1
-    s.funcbpt[s.bptable[id].func].bps[s.bptable[id].line] = nil
-    if s.funcbpt[s.bptable[id].func].num == 0 then
-        s.funcbpt[s.bptable[id].func] = nil
+    local func = s.bptable[id].func
+    local line = s.bptable[id].line
+    local funcbp = s.funcbpt[func]
+
+    funcbp.num = funcbp.num - 1
+    funcbp.bps[line] = nil
+    if funcbp.num == 0 then
+        funcbp.bps = nil
+        funcbp = nil
     end
+
     s.bptable[id] = nil
     s.bpnum = s.bpnum - 1
     if s.bpnum == 0 then

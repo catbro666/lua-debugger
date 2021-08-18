@@ -17,7 +17,11 @@ local function getfuncinfo (func, level)
     local s = status
     local info = s.funcinfos[func]
     if not info then
-        s.funcinfos[func] = debug.getinfo(func, "nSL")
+        if level then
+            s.funcinfos[func] = debug.getinfo(level + 1, "nSL")
+        else
+            s.funcinfos[func] = debug.getinfo(func, "nSL")
+        end
         info = s.funcinfos[func]
         info.sortedlines = {}
         for k, _ in pairs(info.activelines) do
@@ -113,10 +117,8 @@ local function setbreakpoint(func, line)
 
     local funcbp = s.funcbpt[func]
     -- check if the same breakpoint is already set
-    if funcbp then
-       if funcbp[line] then
-           return funcbp[line]
-       end
+    if funcbp and funcbp[line] then
+        return funcbp[line]
     end
 
     s.bpid = s.bpid + 1

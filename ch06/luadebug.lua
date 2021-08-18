@@ -77,15 +77,13 @@ local function hook (event, line)
     elseif event == "line" then
         local curfunc = s.stackinfos[s.stackdepth].func
         local funcbp = s.funcbpt[curfunc]
-        assert(funcbp and funcbp.bps)
-        for bline, _ in pairs(funcbp.bps) do
-            if bline == line then
-                local info = getfuncinfo(curfunc, 2)
-                local prompt = string.format("%s (%s)%s %s:%d\n",
-                    info.what, info.namewhat, info.name, info.short_src, line)
-                io.write(prompt)
-                debug.debug()
-            end
+        assert(funcbp)
+        if funcbp[line] then
+            local info = getfuncinfo(curfunc, 2)
+            local prompt = string.format("%s (%s)%s %s:%d\n",
+                info.what, info.namewhat, info.name, info.short_src, line)
+            io.write(prompt)
+            debug.debug()
         end
     end
 end
@@ -116,8 +114,8 @@ local function setbreakpoint(func, line)
     local funcbp = s.funcbpt[func]
     -- check if the same breakpoint is already set
     if funcbp then
-       if funcbp.bps[line] then
-           return funcbp.bps[line]
+       if funcbp[line] then
+           return funcbp[line]
        end
     end
 
@@ -127,13 +125,12 @@ local function setbreakpoint(func, line)
 
     if funcbp then                      -- already has breaks of this func
         funcbp.num = funcbp.num + 1
-        funcbp.bps[line] = s.bpid
+        funcbp[line] = s.bpid
     else                                -- first breakpoint of this func
         s.funcbpt[func] = {}
         funcbp = s.funcbpt[func]
-        funcbp.bps = {}
         funcbp.num = 1
-        funcbp.bps[line] = s.bpid
+        funcbp[line] = s.bpid
     end
 
     if s.bpnum == 1 then                -- first global breakpoint
@@ -154,9 +151,8 @@ local function removebreakpoint(id)
     local funcbp = s.funcbpt[func]
 
     funcbp.num = funcbp.num - 1
-    funcbp.bps[line] = nil
+    funcbp[line] = nil
     if funcbp.num == 0 then
-        funcbp.bps = nil
         funcbp = nil
     end
 

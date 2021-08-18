@@ -29,3 +29,6 @@ rmbp(id1)
 rmbp(id2)
 rmbp(id3)
 rmbp(id4)
+
+foo()
+bar()

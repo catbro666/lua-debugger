@@ -28,7 +28,7 @@ local function getfuncinfo (func, level)
            table.insert(info.sortedlines, k)
         end
         table.sort(info.sortedlines)
-    elseif (not info.name) and level then
+    elseif level then
          local nameinfo = debug.getinfo(level + 1, "n") -- + 1 to correct level
          info.name = nameinfo.name
          info.namewhat = nameinfo.namewhat

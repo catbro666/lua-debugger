@@ -24,7 +24,8 @@ luadebug - 一个简单的Lua调试器，支持断点调试
 - ch03: general variable set function & traceback of call stack print function 通用变量修改函数及调用栈回溯打印函数
 - ch04: optimize: hook event processing 优化: 钩子事件处理
 - ch05: optimize: data structures of breakpoint info 优化: 断点信息数据结构
-- ch06: breakpoints' line number check & autocorrection 断点的行号检查及自动修正 
+- ch06: breakpoints' line number check & autocorrection 断点的行号检查及自动修正
+- ch07: support setting breakpoints by function names 支持通过函数名称添加断点
 
 # Desciption
 
@@ -42,11 +43,13 @@ local ldb = require "luadebug"
 
 ## setbreakpoint
 
-**syntax:** id = luadebug.setbreakpoint(func, line)
+**syntax:** id = luadebug.setbreakpoint(location, line)
 
-Sets a breakpoint within function `func`, right at the `line` line of source file.
+Sets a breakpoint within `location`, right at the `line` line of source file.
 
-`func` is a function, and `line` is a number which means the line number for setting breakpoint.
+`location` can be a function or a function name (string),
+
+and `line` is a number which means the line number for setting breakpoint.
 
 If the `line` is out of the range of function definition, returns `nil`; otherwise, the `line`
 
@@ -54,7 +57,9 @@ will be automatically corrected to the nearest activeline (greater than or equal
 
 If `line` is not specified, then it will be the smallest activeline by default. 
 
-Returns the breakpoint id when success, otherwise returns `nil`.
+Returns the breakpoint id when success , otherwise returns `nil`.
+
+If the same breakpoint is already set, returns the previous id.
 
 The breakpoint `id` can be later used to remove the breakpoint.
 

@@ -12,6 +12,36 @@ status.stackdepth = 0   -- the depth of stack
 status.funcinfos = {}   -- table for caching func infos
 status.funcbpt = {}     -- breakpoint infos table indexed by func
 status.namebpt = {}     -- breakpoint infos table indexed by name
+status.srcbpt = {}      -- breakpoint infos table indexed by src name
+status.srcfuncmap = {}  -- key: src, val: table(key: func, val: funcinfo)
+
+
+-- check if this breakpoint in a known function
+local function lookforfunc (src, line)
+    local srcfunc = status.srcfuncmap[src]
+    if srcfunc then
+        for func, info in pairs(srcfunc) do
+            if line >= info.linedefined
+                and line <= info.lastlinedefined then
+                return func
+            end
+        end
+    end
+    return nil
+end
+
+
+local function setsrcfunc (info, func)
+    local s = status
+    local srcfunc = s.srcfuncmap[info.short_src]
+    if not srcfunc then
+        srcfunc = {}
+        s.srcfuncmap[info.short_src] = srcfunc
+    end
+    if not srcfunc[func] then
+        srcfunc[func] = info
+    end
+end
 
 
 local function getfuncinfo (func)
@@ -48,6 +78,60 @@ local function verifyfuncline (info, line)
 end
 
 
+local function modsrcbp(src, func, oline, nline)
+    local s = status
+    local srcbp = s.srcbpt[src]
+    local id = srcbp[oline]
+
+    -- remove srcbpt
+    srcbp.num = srcbp.num - 1
+    srcbp[oline] = nil
+    if srcbp.num == 0 then
+        srcbp = nil
+    end
+
+    -- set funcbpt
+    local funcbp = s.funcbpt[func]
+    -- check if the same breakpoint is already set
+    if funcbp and funcbp[nline] then
+        s.bptable[id] = nil             -- remove the breakpoint
+        s.bpnum = s.bpnum - 1
+        assert(s.bpnum > 0)
+        return funcbp[nline]
+    end
+
+    if not funcbp then                  -- first breakpoint of this func
+        s.funcbpt[func] = {}
+        funcbp = s.funcbpt[func]
+        funcbp.num = 0
+    end
+    funcbp.num = funcbp.num + 1
+    funcbp[nline] = id
+
+    -- update bptable
+    s.bptable[id].func = func
+    s.bptable[id].line = nline
+
+    return id
+end
+
+
+local function solvesrcbp (info, func)
+    local s = status
+    local srcbp = s.srcbpt[info.short_src]
+    if srcbp then
+        for k, v in pairs(srcbp) do
+            if k ~= "num" then
+                line = verifyfuncline(info, k)
+                if line then
+                    modsrcbp(info.short_src, func, k, line)
+                end
+            end
+        end
+    end
+end
+
+
 -- hook
 local function hook (event, line)
     local s = status
@@ -57,7 +141,21 @@ local function hook (event, line)
         local name = stackinfo.name
         local funcinfo = getfuncinfo(func)
         local hasbreak = false
+        for k, v in pairs(funcinfo) do
+            print(k, v)
+        end
+        -- check unsolved srcbp
+        solvesrcbp(funcinfo, func)
+
+        if funcinfo.what ~= "C" then
+            setsrcfunc(funcinfo, func)
+        end
+
         if s.funcbpt[func] then
+            local id = s.funcbpt[func]
+            if s.bptable[id] and not s.bptable[id].src then
+                s.bptable[id].src = funcinfo.short_src
+            end
             hasbreak = true
         end
         if not hasbreak and s.namebpt[name] then
@@ -179,6 +277,40 @@ local function setnamebp(name, line)
 end
 
 
+local function setsrcbp(src, line)
+    local s = status
+    local srcbp = s.srcbpt[src]
+
+    -- check if this breakpoint is located in a known function
+    local func = lookforfunc(src, line)
+    if func then
+        return setfuncbp(func, line)
+    end
+
+    -- check if this breakpoint is already set
+    if srcbp and srcbp[line] then
+        return srcbp[line]
+    end
+
+    s.bpid = s.bpid + 1
+    s.bpnum = s.bpnum + 1
+    s.bptable[s.bpid] = {src = src, line = line}
+
+    if not srcbp then                  -- first breakpoint of this src
+        s.srcbpt[src] = {}
+        srcbp = s.srcbpt[src]
+        srcbp.num = 0
+    end
+    srcbp.num = srcbp.num + 1
+    srcbp[line] = s.bpid
+
+    if s.bpnum == 1 then                -- first global breakpoint
+        debug.sethook(hook, "c")        -- set hook for "call" event
+    end
+    return s.bpid                       --> return breakpoint id
+end
+
+
 -- set breakpoint
 local function setbreakpoint(where, line)
     if (type(where) ~= "function" and type(where) ~= "string")
@@ -190,7 +322,23 @@ local function setbreakpoint(where, line)
     if type(where) == "function" then
         return setfuncbp(where, line)
     else            -- "string"
-        return setnamebp(where, line)
+        local s = string.find(where, ":")
+        if s then
+            local src = string.sub(where, 1, s-1)
+            local line = string.sub(where, s+1)
+            if src == "" then
+                io.write("no source file name specified!\n")
+                return nil
+            end
+            line = tonumber(line)
+            if not line then
+                io.write("no valid line number specified!\n")
+                return nil
+            end
+            return setsrcbp(src, line)
+        else
+            return setnamebp(where, line)
+        end
     end
 end
 
@@ -203,10 +351,13 @@ local function removebreakpoint(id)
     end
     local func = s.bptable[id].func
     local name = s.bptable[id].name
+    local src = s.bptable[id].src
     local line = s.bptable[id].line
     local dstbp = nil
     if func then
         dstbp = s.funcbpt[func]
+    elseif src then
+        dstbp = s.srcbpt[src]
     else
         dstbp = s.namebpt[name]
     end

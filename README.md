@@ -48,7 +48,7 @@ local ldb = require "luadebug"
 
 Sets a breakpoint within a function or a package. `location` can be one of the follows:
 
-- a function
+### a function
 
 when `location` is a function, another parameter `line` can be added to specify the line number.
 
@@ -64,7 +64,7 @@ ldb.setbreakpoint(foo)          -- set bp at first active line (line 3) of funct
 ldb.setbreakpoint(foo, 4)       -- set bp at line 4 within function foo
 ```
 
-- a string consists of a function name, a `@` and an optional line number
+### a string consists of a function name, a `@` and an optional line number
 
 Example:
 
@@ -78,7 +78,7 @@ ldb.setbreakpoint("foo@")       -- set bp at first active line (line 3) of funct
 ldb.setbreakpoint("foo@4")      -- set bp at line 4 within function "foo"
 ```
 
-- a string consists of a package name, a `:` and an optional line number
+### a string consists of a package name, a `:` and an optional line number
 
 If a negative line number is specified, the breakpoint will be set within mainchunk.
 
@@ -88,7 +88,7 @@ If no line number is specified, the breakpoint will be set at the first activeli
 
 Example:
 
-    - `testpackage.lua`
+- `testpackage.lua`
 
 ```lua
 local n = 0                     -- line 1
@@ -97,7 +97,7 @@ local function foo()            -- line 2
 end                             -- line 4
 ```
 
-    - `test.lua`
+- `test.lua`
 
 ```lua
 local ldb = require "luadebug"

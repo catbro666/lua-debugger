@@ -25,7 +25,8 @@ luadebug - 一个简单的Lua调试器，支持断点调试
 - ch04: optimize: hook event processing 优化: 钩子事件处理
 - ch05: optimize: data structures of breakpoint info 优化: 断点信息数据结构
 - ch06: breakpoints' line number check & autocorrection 断点的行号检查及自动修正
-- ch07: support setting breakpoints by function names 支持通过函数名称添加断点
+- ch07: support setting breakpoints by function name 支持通过函数名称添加断点
+- ch08: support setting breakpoints by package name 支持通过包名称添加断点
 
 # Desciption
 
@@ -45,17 +46,73 @@ local ldb = require "luadebug"
 
 **syntax:** id = luadebug.setbreakpoint(location, line)
 
-Sets a breakpoint within `location`, right at the `line` line of source file.
+Sets a breakpoint within a function or a package. `location` can be one of the follows:
 
-`location` can be a function or a function name (string),
+- a function
 
-and `line` is a number which means the line number for setting breakpoint.
+when `location` is a function, another parameter `line` can be added to specify the line number.
 
-If the `line` is out of the range of function definition, returns `nil`; otherwise, the `line`
+Example:
 
-will be automatically corrected to the nearest activeline (greater than or equal to `line`).
+```lua
+local ldb = require "luadebug"  -- line 1
+local function foo()            -- line 2
+    local a = 1                 -- line 3
+end                             -- line 4
 
-If `line` is not specified, then it will be the smallest activeline by default. 
+ldb.setbreakpoint(foo)          -- set bp at first active line (line 3) of function foo
+ldb.setbreakpoint(foo, 4)       -- set bp at line 4 within function foo
+```
+
+- a string consists of a function name, a `@` and an optional line number
+
+Example:
+
+```lua
+local ldb = require "luadebug"  -- line 1
+local function foo()            -- line 2
+    local a = 1                 -- line 3
+end                             -- line 4
+
+ldb.setbreakpoint("foo@")       -- set bp at first active line (line 3) of function "foo"
+ldb.setbreakpoint("foo@4")      -- set bp at line 4 within function "foo"
+```
+
+- a string consists of a package name, a `:` and an optional line number
+
+If a negative line number is specified, the breakpoint will be set within mainchunk.
+
+If a positive line number is specified, the breakpoint will be set within subfuntion of mainchunk.
+
+If no line number is specified, the breakpoint will be set at the first activeline of mainchunk.
+
+Example:
+
+    - `testpackage.lua`
+
+```lua
+local n = 0                     -- line 1
+local function foo()            -- line 2
+    local a = 1                 -- line 3
+end                             -- line 4
+```
+
+    - `test.lua`
+
+```lua
+local ldb = require "luadebug"
+
+ldb.setbreakpoint("testpackage:")   -- set bp at first activeline (line 1) of mainchunk
+ldb.setbreakpoint("testpackage:-2") -- set bp at line 4 (function declaration) within mainchunk
+ldb.setbreakpoint("testpackage:2")  -- set bp at line 3 within function foo
+ldb.setbreakpoint("testpackage:4")  -- set bp at line 4 within function foo
+```
+
+If the line number is out of the range of function definition, returns `nil`; otherwise, the line number
+
+will be automatically corrected to the nearest activeline (greater than or equal to the line number in parameter).
+
+If line number is not specified, then it will be the smallest activeline by default.
 
 Returns the breakpoint id when success , otherwise returns `nil`.
 

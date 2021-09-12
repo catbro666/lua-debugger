@@ -1,39 +1,30 @@
 local ldb = require "luadebug"
+local lib = require "testlib"
 local setbp = ldb.setbreakpoint
 local rmbp = ldb.removebreakpoint
 
-local function foo()
-    local a = 0
-end
+local id1 = setbp("foo@")           -- foo 2
+local id2 = setbp("foo@3")          -- foo 3
 
-local function bar()
-    local a = 0
-end
-
-local id1 = setbp("foo")
-local id2 = setbp("foo", 7)
-
-local id3 = setbp("setbpbysrc.lua:9")
-local id4 = setbp("setbpbysrc.lua:11")
-local id5 = setbp("setbpbysrc.lua:100") -- invalid line
-local id6 = setbp("setbpbysrc.lua:")
+local id3 = setbp("testlib:5")      -- bar 6
+local id4 = setbp("testlib:7")      -- bar 7
+local id5 = setbp("testlib:100")    -- invalid line
+local id6 = setbp(":5")
 assert(not id6)
-local id7 = setbp(":5")
+local id7 = setbp("testlib:aa")
 assert(not id7)
-local id8 = setbp("setbpbysrc.lua:aa")
-assert(not id8)
 
-foo()
-bar()
+lib.foo(1)              -- break twice
+lib.bar(1)              -- break twice
 
 rmbp(id1)
 rmbp(id3)
 
-foo()
-bar()
+lib.foo(2)              -- break once
+lib.bar(2)              -- break once
 
 rmbp(id2)
 rmbp(id4)
 
-foo()
-bar()
+lib.foo(3)              -- not break
+lib.bar(3)              -- not break

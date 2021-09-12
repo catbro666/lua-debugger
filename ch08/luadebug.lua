@@ -18,10 +18,15 @@ status.srcfuncmap = {}  -- key: src, val: table(key: func, val: funcinfo)
 
 -- check if this breakpoint in a known function
 local function lookforfunc (src, line)
+    assert(line)
     local srcfunc = status.srcfuncmap[src]
     if srcfunc then
         for func, info in pairs(srcfunc) do
-            if line >= info.linedefined
+            if info.what == "main" then
+                if line < 0 then
+                    return func
+                end
+            elseif line >= info.linedefined
                 and line <= info.lastlinedefined then
                 return func
             end
@@ -55,6 +60,11 @@ local function getfuncinfo (func)
                table.insert(info.sortedlines, k)
             end
             table.sort(info.sortedlines)
+            -- treat mainchunk specially so that `verifyfuncline` can work normally
+            if info.what == "main" then
+                info.linedefined = 1
+                info.lastlinedefined = info.sortedlines[#info.sortedlines]
+            end
         end
         s.funcinfos[func] = info
     end
@@ -65,6 +75,12 @@ end
 local function verifyfuncline (info, line)
     if not line then
         return info.sortedlines[1]
+    end
+    if line < 0 then
+        if info.what ~= "main" then
+            return nil
+        end
+        line = -line
     end
     if line < info.linedefined or line > info.lastlinedefined then
         return nil
@@ -141,9 +157,6 @@ local function hook (event, line)
         local name = stackinfo.name
         local funcinfo = getfuncinfo(func)
         local hasbreak = false
-        for k, v in pairs(funcinfo) do
-            print(k, v)
-        end
         -- check unsolved srcbp
         solvesrcbp(funcinfo, func)
 
@@ -162,7 +175,7 @@ local function hook (event, line)
             local min = funcinfo.linedefined
             local max = funcinfo.lastlinedefined
             for k, _ in pairs(s.namebpt[name]) do
-                if k ~= "num" and ((k >= min and k <= max) or k == 0) then
+                if type(k) == "number" and ((k >= min and k <= max) or k == 0) then
                     hasbreak = true
                     break
                 end
@@ -279,7 +292,6 @@ end
 
 local function setsrcbp(src, line)
     local s = status
-    local srcbp = s.srcbpt[src]
 
     -- check if this breakpoint is located in a known function
     local func = lookforfunc(src, line)
@@ -287,6 +299,7 @@ local function setsrcbp(src, line)
         return setfuncbp(func, line)
     end
 
+    local srcbp = s.srcbpt[src]
     -- check if this breakpoint is already set
     if srcbp and srcbp[line] then
         return srcbp[line]
@@ -322,22 +335,49 @@ local function setbreakpoint(where, line)
     if type(where) == "function" then
         return setfuncbp(where, line)
     else            -- "string"
-        local s = string.find(where, ":")
-        if s then
-            local src = string.sub(where, 1, s-1)
-            local line = string.sub(where, s+1)
-            if src == "" then
-                io.write("no source file name specified!\n")
+        local i = string.find(where, ":")
+        if i then   -- package name
+            local packname = string.sub(where, 1, i-1)
+            local line = string.sub(where, i+1)
+            if packname == "" then
+                io.write("no package name specified!\n")
                 return nil
             end
-            line = tonumber(line)
-            if not line then
-                io.write("no valid line number specified!\n")
+            if line ~= "" then
+                line = tonumber(line)
+                if not line then
+                    io.write("no valid line number specified!\n")
+                    return nil
+                end
+            else
+                line = -1
+            end
+            local path, err = package.searchpath(packname, package.path)
+            if not path then
+                io.write(err)
                 return nil
             end
-            return setsrcbp(src, line)
+            return setsrcbp(path, line)
         else
-            return setnamebp(where, line)
+            local i = string.find(where, "@")
+            if i then   -- function name
+                local funcname = string.sub(where, 1, i-1)
+                local line = string.sub(where, i+1)
+                if funcname == "" then
+                    io.write("no function name specified!\n")
+                    return nil
+                end
+                if line ~= "" then
+                    line = tonumber(line)
+                    if not line then
+                        io.write("no valid line number specified!\n")
+                        return nil
+                    end
+                else
+                    line = nil
+                end
+                return setnamebp(funcname, line)
+            end
         end
     end
 end

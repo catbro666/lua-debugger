@@ -12,6 +12,7 @@ lib.foo()   -- break once
 rmbp(id1)
 
 lib.foo()   -- not break
+print("not break")
 
 local id3 = setbp("testlib:3")  -- foo 3
 assert(id3 == 3)

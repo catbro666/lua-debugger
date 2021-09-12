@@ -88,7 +88,7 @@ If no line number is specified, the breakpoint will be set at the first activeli
 
 Example:
 
-- `testpackage.lua`
+    - `testpackage.lua`
 
 ```lua
 local n = 0                     -- line 1
@@ -97,7 +97,7 @@ local function foo()            -- line 2
 end                             -- line 4
 ```
 
-- `test.lua`
+    - `test.lua`
 
 ```lua
 local ldb = require "luadebug"

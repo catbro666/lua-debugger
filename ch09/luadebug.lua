@@ -2,6 +2,7 @@
 
 local debug = require "debug"
 
+local version = "0.0.1"
 -- record breakpoint associated status
 local status = {}
 status.bpnum = 0        -- current breakpoint number
@@ -14,6 +15,9 @@ status.funcbpt = {}     -- breakpoint infos table indexed by func
 status.namebpt = {}     -- breakpoint infos table indexed by name
 status.srcbpt = {}      -- breakpoint infos table indexed by src name
 status.srcfuncmap = {}  -- key: src, val: table(key: func, val: funcinfo)
+
+local debug_mode = false
+local hascustomnames = false
 
 
 -- check if this breakpoint in a known function
@@ -81,6 +85,10 @@ local function verifyfuncline (info, line)
             return nil
         end
         line = -line
+    else
+        if info.what == "main" then
+            return nil
+        end
     end
     if line < info.linedefined or line > info.lastlinedefined then
         return nil
@@ -148,60 +156,57 @@ local function solvesrcbp (info, func)
 end
 
 
+local updatehookevent
+
+
 -- hook
 local function hook (event, line)
     local s = status
     if event == "call" or event == "tail call" then
-        local stackinfo = debug.getinfo(2, "nf")
-        local func = stackinfo.func
-        local name = stackinfo.name
-        local funcinfo = getfuncinfo(func)
-        local hasbreak = false
-        -- check unsolved srcbp
-        solvesrcbp(funcinfo, func)
-
-        if funcinfo.what ~= "C" then
-            setsrcfunc(funcinfo, func)
-        end
-
-        if s.funcbpt[func] then
-            local id = s.funcbpt[func]
-            if s.bptable[id] and not s.bptable[id].src then
-                s.bptable[id].src = funcinfo.short_src
-            end
-            hasbreak = true
-        end
-        if not hasbreak and s.namebpt[name] then
-            local min = funcinfo.linedefined
-            local max = funcinfo.lastlinedefined
-            for k, _ in pairs(s.namebpt[name]) do
-                if type(k) == "number" and ((k >= min and k <= max) or k == 0) then
-                    hasbreak = true
-                    break
-                end
-            end
-        end
+        -- level 2: hook, target func
+        local sinfo = debug.getinfo(2, "nf")
+        local finfo = updatehookevent(sinfo)
         if event == "call" then     -- for tail call, just overwrite
             s.stackdepth = s.stackdepth + 1
         end
-        s.stackinfos[s.stackdepth] =
-            {stackinfo = stackinfo, funcinfo = funcinfo, hasbreak = hasbreak}
-        -- found breakpoint in current function
-        if hasbreak then
-            debug.sethook(hook, "crl")	-- add "line" event
-        else        -- no breakpoints found
-            debug.sethook(hook, "cr")   -- remove "line" event temporarily
+        if debug_mode then
+            local prompt = string.format("call %s (%s)%s %s depth %d\n",
+                finfo.what, sinfo.namewhat, sinfo.name, finfo.short_src,
+                s.stackdepth)
+            io.write(prompt)
         end
+        s.stackinfos[s.stackdepth] =
+            {stackinfo = sinfo, funcinfo = finfo}
     elseif event == "return" or event == "tail return" then
-        s.stackinfos[s.stackdepth] = nil
-        s.stackdepth = s.stackdepth - 1
-        -- if the previous function has breakpoints
-        if s.stackdepth > 0 and s.stackinfos[s.stackdepth].hasbreak then
-            debug.sethook(hook, "crl")  -- restore "line" event
-        else
-            debug.sethook(hook, "cr")   -- remove "line" event
+--        local sinfo = debug.getinfo(2, "nf")
+--        local finfo = updatehookevent(sinfo)
+        if s.stackdepth > 0 then
+            if debug_mode then
+                local sinfo = s.stackinfos[s.stackdepth].stackinfo
+                local finfo = s.stackinfos[s.stackdepth].funcinfo
+                local prompt = string.format("return %s (%s)%s %s depth %d\n",
+                    finfo.what, sinfo.namewhat, sinfo.name, finfo.short_src,
+                    s.stackdepth)
+                io.write(prompt)
+            end
+            s.stackinfos[s.stackdepth] = nil
+            s.stackdepth = s.stackdepth - 1
+        end
+        if s.bpnum == 0 then
+            if debug_mode then
+                print("remove hook")
+            end
+            debug.sethook()
+            s.stackinfos = {}
+            s.stackdepth = 0
+        end
+        if s.stackdepth > 0 then
+            updatehookevent(s.stackinfos[s.stackdepth].stackinfo)
         end
     elseif event == "line" then
+        if debug_mode then
+            print("line", line, " depth", s.stackdepth)
+        end
         local sinfo = s.stackinfos[s.stackdepth].stackinfo
         local finfo = s.stackinfos[s.stackdepth].funcinfo
         local func = sinfo.func
@@ -216,6 +221,61 @@ local function hook (event, line)
             debug.debug()
         end
     end
+end
+
+
+-- check if there are breakpoints in the function 'func'
+-- if so, add line event; otherwise, remove line event
+function updatehookevent(stackinfo)
+    local s = status
+    local func = stackinfo.func
+    local name = stackinfo.name
+    local funcinfo = getfuncinfo(func)
+    local hasbreak = false
+    -- check unsolved srcbp
+    solvesrcbp(funcinfo, func)
+
+    if funcinfo.what ~= "C" then
+        if funcinfo.what == "main" then
+            funcinfo.refname = "main"
+        else
+            funcinfo.refname = name
+        end
+        setsrcfunc(funcinfo, func)
+    end
+
+    if s.funcbpt[func] then
+--         local id = s.funcbpt[func]
+--         if s.bptable[id] and not s.bptable[id].src then
+--             s.bptable[id].src = funcinfo.short_src
+--         end
+        hasbreak = true
+    end
+    if not hasbreak and s.namebpt[name] then
+        local min = funcinfo.linedefined
+        local max = funcinfo.lastlinedefined
+        for k, _ in pairs(s.namebpt[name]) do
+            if type(k) == "number" and ((k >= min and k <= max) or k == 0) then
+                hasbreak = true
+                break
+            end
+        end
+    end
+
+    -- found breakpoint in current function
+    if hasbreak then
+        if debug_mode then
+            print("add line event")
+        end
+        debug.sethook(hook, "crl")	-- add "line" event
+    else        -- no breakpoints found
+        if debug_mode then
+            print("remove line event")
+        end
+        debug.sethook(hook, "cr")   -- remove "line" event
+    end
+
+    return funcinfo
 end
 
 
@@ -243,7 +303,7 @@ local function setfuncbp(func, line)
 
     s.bpid = s.bpid + 1
     s.bpnum = s.bpnum + 1
-    s.bptable[s.bpid] = {func = func, line = line}
+    s.bptable[s.bpid] = {func = func, line = line, src = info.short_src}
 
     if not funcbp then                  -- first breakpoint of this func
         s.funcbpt[func] = {}
@@ -253,9 +313,6 @@ local function setfuncbp(func, line)
     funcbp.num = funcbp.num + 1
     funcbp[line] = s.bpid
 
-    if s.bpnum == 1 then                -- first global breakpoint
-        debug.sethook(hook, "c")        -- set hook for "call" event
-    end
     return s.bpid                       --> return breakpoint id
 end
 
@@ -283,9 +340,6 @@ local function setnamebp(name, line)
     namebp.num = namebp.num + 1
     namebp[line] = s.bpid
 
-    if s.bpnum == 1 then                -- first global breakpoint
-        debug.sethook(hook, "c")        -- set hook for "call" event
-    end
     return s.bpid                       --> return breakpoint id
 end
 
@@ -317,15 +371,13 @@ local function setsrcbp(src, line)
     srcbp.num = srcbp.num + 1
     srcbp[line] = s.bpid
 
-    if s.bpnum == 1 then                -- first global breakpoint
-        debug.sethook(hook, "c")        -- set hook for "call" event
-    end
     return s.bpid                       --> return breakpoint id
 end
 
 
 -- set breakpoint
 local function setbreakpoint(where, line)
+    local id
     if (type(where) ~= "function" and type(where) ~= "string")
         or ( line and type(line) ~= "number") then
         io.write("invalid parameter\n")
@@ -333,6 +385,19 @@ local function setbreakpoint(where, line)
     end
 
     if type(where) == "function" then
+        local info = getfuncinfo(where)
+        if not info then
+            io.write("invalid function\n")
+            return nil
+        end
+        if info.what == "main" then
+            info.refname = "main"
+            if not line or line == 0 then
+                line = -1
+            elseif line > 0 then
+                line = -line
+            end
+        end
         return setfuncbp(where, line)
     else            -- "string"
         local i = string.find(where, ":")
@@ -352,10 +417,18 @@ local function setbreakpoint(where, line)
             else
                 line = -1
             end
-            local path, err = package.searchpath(packname, package.path)
-            if not path then
-                io.write(err)
-                return nil
+            local path, err
+            if packname == "." then     -- current package
+                -- level 5: setbreakpoint, debug mainchunk, debug.debug,
+                --          hook or init, target func
+                local func = debug.getinfo(5, "f").func
+                path = getfuncinfo(func).short_src
+            else
+                path, err = package.searchpath(packname, package.path)
+                if not path then
+                    io.write(err)
+                    return nil
+                end
             end
             return setsrcbp(path, line)
         else
@@ -376,7 +449,27 @@ local function setbreakpoint(where, line)
                 else
                     line = nil
                 end
-                return setnamebp(funcname, line)
+                if funcname == "." then     -- current function
+                    -- level 5: setbreakpoint, debug mainchunk, debug.debug,
+                    --          hook or init, target func
+                    local func = debug.getinfo(5, "f").func
+                    local info = getfuncinfo(func)
+                    if not info then
+                        io.write("invalid function\n")
+                        return nil
+                    end
+                    if info.what == "main" then
+                        info.refname = "main"
+                        if not line or line == 0 then
+                            line = -1
+                        elseif line > 0 then
+                            line = -line
+                        end
+                    end
+                    return setfuncbp(func, line)
+                else
+                    return setnamebp(funcname, line)
+                end
             end
         end
     end
@@ -411,9 +504,6 @@ local function removebreakpoint(id)
 
     s.bptable[id] = nil
     s.bpnum = s.bpnum - 1
-    if s.bpnum == 0 then
-        debug.sethook()                 -- remove hook
-    end
 end
 
 
@@ -536,10 +626,222 @@ local function printtraceback(level)
 end
 
 
+-- print breakpoint info
+local function printbreakinfo()
+    local s = status
+    for i=1,s.bpid do
+        local bp = s.bptable[i]
+        local prompt
+        if bp then
+            if bp.name then
+                prompt = string.format("id: %d, name: %s, line: %d\n",
+                    i, bp.name, bp.line)
+            else
+                local refname
+                if bp.func then
+                    refname = getfuncinfo(bp.func).refname
+                end
+                prompt = string.format("id: %d, src: %s, line: %d, refname: %s\n",
+                    i, bp.src, bp.line, refname)
+            end
+            io.write(prompt)
+        end
+    end
+end
+
+
+local longnames = {
+    "setbreakpoint",
+    "removebreakpoint",
+    "printvarvalue",
+    "setvarvalue",
+    "printtraceback",
+    "printbreakinfo",
+    "help",
+}
+
+local shortnames = {
+    "b",
+    "d",
+    "p",
+    "s",
+    "bt",
+    "i",
+    "h",
+}
+
+local customnames
+
+local function help(verbose)
+    if hascustomnames then
+        io.write(customnames[1] .. ":       set breakpoint\n")
+        io.write(customnames[2] .. ":       remove breakpoint\n")
+        io.write(customnames[3] .. ":       print var value\n")
+        io.write(customnames[4] .. ":       set var value\n")
+        io.write(customnames[5] .. ":       print traceback\n")
+        io.write(customnames[6] .. ":       print breakpoint info\n")
+        io.write(customnames[7] .. ":       help info\n")
+        if verbose then
+            io.write("\nExamples: \n")
+            io.write("  " .. customnames[1] .. "(\"foo@\")          set bp at the first active line of function \"foo\"\n")
+            io.write("  " .. customnames[1] .. "(\"foo@4\")         set bp at line 4 of function \"foo\"\n")
+            io.write("  " .. customnames[1] .. "(\".@4\")           set bp at line 4 of current function\n")
+            io.write("  " .. customnames[1] .. "(\".@\")            set bp at the first active line of current function\n")
+            io.write("  " .. customnames[1] .. "(\"mylib:2\")       set bp at line 3 of package \"mylib\"\n")
+            io.write("  " .. customnames[1] .. "(\"mylib:4\")       set bp at line 4 of package \"mylib\"\n")
+            io.write("  " .. customnames[1] .. "(\"mylib:-2\")      set bp at line 4 within mainchunk\n")
+            io.write("  " .. customnames[1] .. "(\"mylib:\")        set bp at first activeline of mainchunk\n")
+            io.write("  " .. customnames[1] .. "(\".:4\")           set bp at line 4 of current package\n")
+            io.write("  " .. customnames[2] .. "(1)               remove the breakpoint with id 1\n")
+            io.write("  " .. customnames[3] .. "(\"a\")             print var \"a\", searching from stack level 1\n")
+            io.write("  " .. customnames[3] .. "(\"a\", 2)          print var \"a\", searching from stack level 2\n")
+            io.write("  " .. customnames[4] .. "(\"a\", 8)          set the value of var \"a\" to 8, searching from stack level 1\n")
+            io.write("  " .. customnames[4] .. "(\"a\", 8, 2)       set the value of var \"a\" to 8, searching from stack level 2\n")
+            io.write("  " .. customnames[5] .. "()                print a traceback of call stack, from stack level 1\n")
+            io.write("  " .. customnames[5] .. "(2)               print a traceback of call stack, from stack level 2\n")
+            io.write("  " .. customnames[6] .. "()                print the information of all the breakpoints\n")
+            io.write("  " .. customnames[7] .. "(1)               show verbose help info\n")
+        end
+    else
+        io.write("setbreakpoint/b:          set breakpoint\n")
+        io.write("removebreakpoint/d:       remove breakpoint\n")
+        io.write("printvarvalue/p:          print var value\n")
+        io.write("setvarvalue/s:            set var value\n")
+        io.write("printtraceback/bt:        print traceback\n")
+        io.write("printbreakinfo/i:         print breakpoint info\n")
+        io.write("help/h:                   help info\n")
+        if verbose then
+            io.write("\nExamples: \n")
+            io.write("  setbreakpoint(\"foo@\")         set bp at the first active line of function \"foo\"\n")
+            io.write("  setbreakpoint(\"foo@4\")        set bp at line 4 of function \"foo\"\n")
+            io.write("  setbreakpoint(\".@4\")          set bp at line 4 of current function\n")
+            io.write("  setbreakpoint(\".@\")           set bp at the first active line of current function\n")
+            io.write("  setbreakpoint(\"mylib:2\")      set bp at line 3 of package \"mylib\"\n")
+            io.write("  setbreakpoint(\"mylib:4\")      set bp at line 4 of package \"mylib\"\n")
+            io.write("  setbreakpoint(\"mylib:-2\")     set bp at line 4 within mainchunk\n")
+            io.write("  setbreakpoint(\"mylib:\")       set bp at first activeline of mainchunk\n")
+            io.write("  setbreakpoint(\".:4\")          set bp at line 4 of current package\n")
+            io.write("  removebreakpoint(1)           remove the breakpoint with id 1\n")
+            io.write("  printvarvalue(\"a\")            print var \"a\", searching from stack level 1\n")
+            io.write("  printvarvalue(\"a\", 2)         print var \"a\", searching from stack level 2\n")
+            io.write("  setvarvalue(\"a\", 8)           set the value of var \"a\" to 8, searching from stack level 1\n")
+            io.write("  setvarvalue(\"a\", 8, 2)        set the value of var \"a\" to 8, searching from stack level 2\n")
+            io.write("  printtraceback()              print a traceback of call stack, from stack level 1\n")
+            io.write("  printtraceback(2)             print a traceback of call stack, from stack level 2\n")
+            io.write("  printbreakinfo()              print the information of all the breakpoints\n")
+            io.write("  help(1)                       show verbose help info\n")
+        end
+    end
+end
+
+
+local function hasdupname(names)
+    for _, v in ipairs(names) do
+        if _G[v] then
+            print("table `_G` already has element called \"" .. v .. "\" please specify custom names as the following example:")
+            print("require(\"luadebug\").init({\"bb\", \"dd\", \"pp\", \"ss\", \"tt\", \"ii\", \"hh\"})\n")
+            return true
+        end
+    end
+    return false
+end
+
+
+local function init(name_table, is_debug)
+    local s = status
+    if not _G.luadebug_inited then
+        if name_table and type(name_table) == "table" then
+            if hasdupname(name_table) then
+                return
+            end
+            _G[name_table[1]] = setbreakpoint
+            _G[name_table[2]] = removebreakpoint
+            _G[name_table[3]] = printvarvalue
+            _G[name_table[4]] = setvarvalue
+            _G[name_table[5]] = printtraceback
+            _G[name_table[6]] = printbreakinfo
+            _G[name_table[7]] = help
+            hascustomnames = true
+            customnames = name_table
+        else
+            if hasdupname(longnames) then
+                return
+            end
+            if hasdupname(shortnames) then
+                return
+            end
+            _G.setbreakpoint = setbreakpoint
+            _G.removebreakpoint = removebreakpoint
+            _G.printvarvalue = printvarvalue
+            _G.setvarvalue = setvarvalue
+            _G.printtraceback = printtraceback
+            _G.printbreakinfo = printbreakinfo
+            _G.help = help
+            -- short names
+            _G.b = setbreakpoint
+            _G.d = removebreakpoint
+            _G.p = printvarvalue
+            _G.bt = printtraceback
+            _G.s = setvarvalue
+            _G.i = printbreakinfo
+            _G.h = help
+        end
+        if is_debug then
+            debug_mode = true
+        end
+        _G.luadebug_inited = true
+    end
+
+    io.write(string.format("luadebug %s start ...\n", version))
+    if hascustomnames then
+        io.write("input '" .. customnames[7] .. "()' for help info or '"
+            .. customnames[7] .. "(1)' for verbose info\n")
+    else
+        io.write("input 'help()' for help info or 'help(1)' for verbose info\n")
+    end
+
+    local sinfo = debug.getinfo(2, "nfl")
+    local func = sinfo.func
+    local name = sinfo.name
+    local finfo = getfuncinfo(func)
+    local prompt = string.format("%s (%s)%s %s:%d\n",
+        finfo.what, sinfo.namewhat, name, finfo.short_src, sinfo.currentline)
+    io.write(prompt)
+    debug.debug()
+
+    if s.bpnum > 0 then
+        if s.stackdepth == 0 then       -- set hook
+            local max_depth = 2
+            while ( true ) do
+                if not debug.getinfo(max_depth, "f") then
+                    max_depth = max_depth - 1
+                    break
+                end
+                max_depth = max_depth + 1
+            end
+            -- init stackinfos
+            for i=max_depth, 1, -1 do
+                s.stackdepth = s.stackdepth + 1
+                local sinfo = debug.getinfo(i, "nf")
+                local func = sinfo.func
+                local finfo = getfuncinfo(func)
+                s.stackinfos[s.stackdepth] =
+                    {stackinfo = sinfo, funcinfo = finfo}
+            end
+            -- add sethook
+            s.stackdepth = s.stackdepth + 1
+            s.stackinfos[s.stackdepth] =
+                {stackinfo = {name = "sethook", func = debug.sethook},
+                 funcinfo = getfuncinfo(debug.sethook)}
+            debug.sethook(hook, "cr")
+            if debug_mode then
+                print("set hook")
+            end
+        end
+    end
+end
+
+
 return {
-    setbreakpoint = setbreakpoint,
-    removebreakpoint = removebreakpoint,
-    printvarvalue = printvarvalue,
-    printtraceback = printtraceback,
-    setvarvalue = setvarvalue,
+    init = init,
 }
